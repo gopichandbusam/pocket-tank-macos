@@ -1,0 +1,6 @@
+From the project root:
+  bash mac/build.sh
+
+Requires Apple build tools/Swift, Python 3, Git and SDL2 development files.
+Outputs: dist/Pocket Tank.app, dist/Uninstall Pocket Tank.app and dist/Pocket Tank.dmg.
+See README.md for supported release platforms, dependencies and validation.

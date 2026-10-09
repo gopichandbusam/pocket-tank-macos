@@ -63,6 +63,10 @@
 #include "notice.h"
 #include "tank_events.h"
 #include "update.h"
+#include "mac_shell.h"
+#include "mac_resize.h"
+#include <sys/stat.h>
+#include <errno.h>
 void net_sim_advance(float dt);    /* net_port_sim.c: the pretend radio's clock */
 bool net_sim_radio_on(void);
 
@@ -1821,7 +1825,8 @@ static int selftest_tend(void) {
                                                   carry it inside HOLD_APPROACH_FROM first (2026-09-29) */
     g->trust = 6;  g->hunger = 1; g->stress = 0; g->x = 120; g->y = 200; g->energy = 10;
     g->goal.id = GOAL_EXPLORE; g->goal.urgency = 2;
-    for (int step = 1; step <= 60 * 14; step++) {
+    /* Allow trusting fish approach timing to vary across host architectures. */
+    for (int step = 1; step <= 60 * 30; step++) {
         tank_touch_hold(&tank, hx, hy);
         tank_tick(&tank, 1.0f / 60.0f, advisor_rules);
         f->hunger = 1; g->hunger = 1;
@@ -1865,7 +1870,8 @@ static uint32_t dirty_buf[RENDER_DIRTY_WORDS];
 static lv_obj_t *canvas;
 static uint32_t last_ms;
 static bool llm_available = false;
-static bool llm_active = false;
+static bool llm_active = true;
+static unsigned long mac_render_frames;
 static int  selected_fish = -1;      /* click a fish for its stat card */
 static bool ui_visible = true;       /* U toggles all overlays */
 static bool milestones_view = false; /* M toggles the milestones screen */
@@ -1945,7 +1951,7 @@ static void on_tank_event(int ev, int fish, void *ud) {
     }
 }
 static void sound_init(void) {
-    FILE *f = fopen(SOUNDS_BIN, "rb");
+    FILE *f = fopen(mac_shell_resource("assets/sounds/sounds.bin", SOUNDS_BIN), "rb");
     if (!f) { printf("sound: %s not found (tools/make_sounds.py build) - silent\n", SOUNDS_BIN); return; }
     s_bank = malloc(SND_BANK_BYTES);
     size_t got = s_bank ? fread(s_bank, 1, SND_BANK_BYTES, f) : 0; fclose(f);
@@ -2014,6 +2020,7 @@ static void sim_flip_canvas(void) {
 
 static void frame_cb(lv_timer_t *timer) {
     (void)timer;
+    mac_render_frames++;
     if (s_canvas_flipped) sim_flip_canvas();
     uint32_t now = SDL_GetTicks();
     float dt = (now - last_ms) / 1000.0f;
@@ -2086,7 +2093,7 @@ static void frame_cb(lv_timer_t *timer) {
  * minutes > 0 runs REAL-TIME pacing for that long (the honest measurement of
  * survival-reflex overrides); minutes == 0 is the fast smoke test. */
 static int selftest_llm(int minutes) {
-    if (!advisor_llm_init("../model/out/model_q4.bin", "../model/out/tokenizer.bin")) {
+    if (!advisor_llm_init(mac_shell_resource("model/out/model_q4.bin", "../model/out/model_q4.bin"), mac_shell_resource("model/out/tokenizer.bin", "../model/out/tokenizer.bin"))) {
         printf("FAIL: model.bin/tokenizer.bin not found under ../model/out/\n");
         return 1;
     }
@@ -4061,6 +4068,17 @@ static int selftest_card(const char *prefix) {
     return 0;
 }
 
+/* A failed shutdown write must leave the live tank available for retry. */
+static bool save_before_quit(bool smoke) {
+    for (;;) {
+        if (progression_save(&tank)) return true;
+        const char *path = getenv("POCKET_TANK_SAVE");
+        fprintf(stderr, "Save failed before quit: %s (errno %d: %s)\n",
+                path ? path : "default save", errno, strerror(errno));
+        if (smoke || !mac_shell_save_failed(path)) return false;
+    }
+}
+
 int main(int argc, char **argv) {
     for (int a = 1; a < argc; a++)
         if (strcmp(argv[a], "--greedy") == 0) advisor_core_sample = false;
@@ -4085,6 +4103,23 @@ int main(int argc, char **argv) {
             return selftest_llm(a + 1 < argc ? atoi(argv[a + 1]) : 0);
     }
 
+    bool mac_controls_test = false;
+    bool mac_theme_resize_test = false;
+    double mac_smoke_seconds = 0;
+    const char *mac_smoke_dir = NULL;
+    for (int a = 1; a < argc; a++) {
+        if (!strcmp(argv[a], "--mac-controls-test")) mac_controls_test = true;
+        else if (!strcmp(argv[a], "--mac-theme-resize-test")) { mac_theme_resize_test = true; mac_controls_test = true; }
+        else if (!strcmp(argv[a], "--mac-smoke-seconds") && a + 1 < argc) mac_smoke_seconds = atof(argv[++a]);
+        else if (!strcmp(argv[a], "--mac-smoke-dir") && a + 1 < argc) mac_smoke_dir = argv[++a];
+    }
+    if (mac_smoke_seconds > 0 && !mac_smoke_dir) {
+        fprintf(stderr, "--mac-smoke-seconds requires --mac-smoke-dir to isolate diagnostic files and saves\n"); return 2;
+    }
+    if (mac_theme_resize_test && (mac_smoke_seconds <= 0 || !mac_smoke_dir)) {
+        fprintf(stderr, "--mac-theme-resize-test requires --mac-smoke-seconds and --mac-smoke-dir\n"); return 2;
+    }
+    mac_shell_prepare(mac_smoke_seconds > 0 ? mac_smoke_dir : NULL);
     tank_init(&tank, (uint32_t)SDL_GetTicks() + 7);
     battery_init(&sim_bat, NULL);
     bool fresh = false;
@@ -4094,8 +4129,9 @@ int main(int argc, char **argv) {
         if (strcmp(argv[a], "--fast") == 0 && a + 1 < argc) progression_time_scale = (float)atof(argv[++a]);
     }
     if (fresh) {
-        char cmd[600]; snprintf(cmd, sizeof cmd, "rm -f '%s/.cache/pocket-tank/tank.sav'", getenv("HOME") ? getenv("HOME") : ".");
-        (void)system(cmd);
+        const char *save = getenv("POCKET_TANK_SAVE");
+        if (save) remove(save);
+        else { char path[600]; snprintf(path, sizeof path, "%s/.cache/pocket-tank/tank.sav", getenv("HOME") ? getenv("HOME") : "."); remove(path); }
     }
     progression_boot(&tank);               /* restore, or a new random pair */
     { uint32_t r = progression_loaded_release();
@@ -4110,15 +4146,21 @@ int main(int argc, char **argv) {
             advisor_llm_narrate = true;   /* film the tank + this terminal */
             llm_active = true;
         }
-    llm_available = advisor_llm_init("../model/out/model_q4.bin",
-                                     "../model/out/tokenizer.bin");
+    llm_available = advisor_llm_init(mac_shell_resource("model/out/model_q4.bin", "../model/out/model_q4.bin"),
+                                     mac_shell_resource("model/out/tokenizer.bin", "../model/out/tokenizer.bin"));
+    llm_active = llm_available;
     printf(llm_available
            ? "LLM advisor loaded (press L to toggle rule/LLM brain)\n"
            : "model.bin/tokenizer.bin not found; rule brain only\n");
     lv_init();
     lv_tick_set_cb(tick_cb);
     lv_display_t *disp = lv_sdl_window_create(TANK_W, TANK_H);
-    lv_sdl_window_set_title(disp, "pocket-tank sim 448x368");
+    lv_sdl_window_set_title(disp, "Pocket Tank");
+    SDL_Renderer *tankRenderer = lv_sdl_window_get_renderer(disp);
+    bool mac_native_window = mac_shell_attach(tankRenderer);
+    bool mac_resize_attached = mac_resize_attach(tankRenderer);
+    if (!llm_available && mac_smoke_seconds <= 0) mac_shell_model_missing();
+    if (mac_smoke_seconds > 0) setup_cancel(&tank);
 
     lv_draw_buf_init(&draw_buf, TANK_W, TANK_H, LV_COLOR_FORMAT_RGB565,
                      TANK_W * 2, canvas_buf, sizeof(canvas_buf));
@@ -4145,11 +4187,80 @@ int main(int argc, char **argv) {
     bool held_page = false;              /* this press opened a piece's page by holding on it */
     uint32_t press_ms = 0; int press_x = 0, press_y = 0;
     float press_fx[N_FISH_MAX] = {0}, press_fy[N_FISH_MAX] = {0};
+    if (mac_controls_test && mac_smoke_seconds>0) { settings_view=true; shop_view=true; }
+    uint32_t mac_smoke_start = SDL_GetTicks();
+    bool mac_saved_exit = false;
+    bool native_blocked_keys[SDL_NUM_SCANCODES] = {false};
+    bool native_blocked_mouse = false;
     while (1) {
+        if (mac_smoke_seconds > 0 && (SDL_GetTicks() - mac_smoke_start) / 1000.0 >= mac_smoke_seconds) mac_shell_request_quit();
+        if (mac_shell_quit_requested()) {
+            mac_saved_exit = save_before_quit(mac_smoke_seconds > 0);
+            if (mac_saved_exit || mac_smoke_seconds > 0) break;
+            /* The native alert can run its own event loop while keys are held. */
+            const Uint8 *held = SDL_GetKeyboardState(NULL);
+            for (int key=0; key<SDL_NUM_SCANCODES; key++) native_blocked_keys[key] |= held[key];
+            native_blocked_mouse = true;
+            last_ms = SDL_GetTicks();
+            continue;
+        }
         uint32_t wait = lv_timer_handler();
+        mac_resize_update();
+        mac_shell_set_controls_enabled(!setup_active() && !update_mode);
+        mac_shell_controls_tick(mac_controls_test && mac_smoke_seconds > 0, mac_smoke_dir, SDL_GetTicks()-mac_smoke_start);
+        mac_shell_theme_resize_tick(mac_theme_resize_test && mac_smoke_seconds > 0, mac_smoke_dir, SDL_GetTicks()-mac_smoke_start);
+        mac_resize_test_tick(mac_theme_resize_test && mac_smoke_seconds > 0, mac_smoke_dir, SDL_GetTicks()-mac_smoke_start);
+        int native_action;
+        while ((native_action = mac_shell_take_action())) {
+            if (setup_active() || update_mode) continue;
+            bool applied = false;
+            switch (native_action) {
+            case MAC_ACTION_FEED: {
+                int before=0, after=0;
+                for(int i=0;i<MAX_FOOD;i++) before+=tank.food[i].alive;
+                tank_feed(&tank, TANK_W/2.0f, 3);
+                for(int i=0;i<MAX_FOOD;i++) after+=tank.food[i].alive;
+                applied=after>before; break;
+            }
+            case MAC_ACTION_LIGHT: { bool previous=tank.light_override ? tank.light_on : !tank.night; tank_toggle_light(&tank); applied=tank.light_override && tank.light_on!=previous; break; }
+            case MAC_ACTION_MILESTONES:
+                if (shop_view) render_shop_leave();
+                settings_view=false; shop_view=false; battery_view=false; updates_view=false; confirm_view=false;
+                milestones_view = !milestones_view; applied=milestones_view && !settings_view && !shop_view && !battery_view && !updates_view && !confirm_view; selected_fish = -1;
+                if (!milestones_view) { progression_ack_milestones(&tank); render_milestones_leave(); }
+                mac_shell_close_help();
+                break;
+            case MAC_ACTION_SOUND: {
+                int previous=audio_volume();
+                int v = (previous+1)%3;
+                if (s_adev) SDL_LockAudioDevice(s_adev);
+                audio_set_volume(v); applied=audio_volume()!=previous;
+                if (s_adev) SDL_UnlockAudioDevice(s_adev);
+                break;
+            }
+            }
+            mac_shell_controls_delivered(native_action, applied);
+        }
         const Uint8 *k = SDL_GetKeyboardState(NULL);
+        bool native_blocked = mac_shell_input_blocked() || !mac_shell_input_focused();
+        /* Unattended diagnostics must not consume typing in the user's apps. */
+        if (mac_smoke_seconds > 0 && !mac_controls_test) native_blocked = true;
+        bool native_held_key = false;
+        for (int key=0; key<SDL_NUM_SCANCODES; key++) {
+            if (native_blocked && k[key]) native_blocked_keys[key]=true;
+            if (!k[key]) native_blocked_keys[key]=false;
+            native_held_key |= native_blocked_keys[key];
+        }
+        bool native_mouse_down = SDL_GetMouseState(NULL,NULL) & SDL_BUTTON(SDL_BUTTON_LEFT);
+        if (native_blocked && native_mouse_down) native_blocked_mouse=true;
+        if (!native_mouse_down) native_blocked_mouse=false;
+        if (native_blocked || native_held_key || native_blocked_mouse) {
+            mdown=false; tank.hold_active=false; tank.drag_active=false; tank.drag_has_prev=false;
+            SDL_Delay(5); continue;
+        }
         int mx, my;
         bool mpress = SDL_GetMouseState(&mx, &my) & SDL_BUTTON(SDL_BUTTON_LEFT);
+        mac_resize_map_mouse(mx, my, &mx, &my);
         if (sim_view_turned()) { mx = TANK_W - 1 - mx; my = TANK_H - 1 - my; }   /* the window shows the glass turned: the finger is too */
         { static int lmx = -1, lmy = -1;            /* a hand near the tank: the mouse moving over the window */
           if (mx != lmx || my != lmy || mpress || k[SDL_SCANCODE_H]) tank_handled(&tank);
@@ -4433,7 +4544,15 @@ int main(int argc, char **argv) {
                    tank.veg_growth[0], tank.veg_growth[1], tank.veg_growth[2]);
         }
         gdown = k[SDL_SCANCODE_G];
-        if (k[SDL_SCANCODE_Q] || k[SDL_SCANCODE_ESCAPE]) { progression_save(&tank); break; }
+        if (k[SDL_SCANCODE_Q] || k[SDL_SCANCODE_ESCAPE]) {
+            fprintf(stderr, "Pocket Tank quit request: keyboard (Q=%d Escape=%d)\n", k[SDL_SCANCODE_Q], k[SDL_SCANCODE_ESCAPE]);
+            mac_saved_exit = save_before_quit(mac_smoke_seconds > 0);
+            if (mac_saved_exit || mac_smoke_seconds > 0) break;
+            for (int key=0; key<SDL_NUM_SCANCODES; key++) native_blocked_keys[key] |= k[key];
+            native_blocked_mouse = true;
+            last_ms = SDL_GetTicks();
+            continue;
+        }
         if (k[SDL_SCANCODE_F] && !fdown) tank_feed(&tank, (float)mx, 3);
         if (k[SDL_SCANCODE_N] && !ndown) tank_toggle_light(&tank);
         if (k[SDL_SCANCODE_A]) tank_light_auto(&tank);
@@ -4445,5 +4564,29 @@ int main(int argc, char **argv) {
         ldown = k[SDL_SCANCODE_L];
         SDL_Delay(wait < 5 ? 5 : (wait > 16 ? 16 : wait));
     }
+    if (mac_smoke_seconds > 0) {
+        char path[4096];
+        snprintf(path, sizeof path, "%s/framebuffer.ppm", mac_smoke_dir);
+        write_ppm(path, canvas_buf);
+        const char *save = getenv("POCKET_TANK_SAVE");
+        struct stat saved_stat;
+        bool save_ok = mac_saved_exit && save && stat(save, &saved_stat) == 0 && saved_stat.st_size > 0;
+        int lvgl_width = lv_display_get_horizontal_resolution(disp);
+        int lvgl_height = lv_display_get_vertical_resolution(disp);
+        bool lvgl_size_ok = lvgl_width == TANK_W && lvgl_height == TANK_H;
+        snprintf(path, sizeof path, "%s/diagnostics.txt", mac_smoke_dir);
+        FILE *report = fopen(path, "w");
+        if (report) {
+            fprintf(report, "native_window=%d\nresize_attached=%d\nlvgl_resolution=%dx%d\nlvgl_fixed_world=%d\nfloating=%d\nwindow_level=%ld\nmodel_loaded=%d\nllm_active=%d\nframes=%lu\nadvisor_asks=%u\nsave_on_exit=%d\nsmoke_elapsed_ms=%u\nsave_path=%s\n",
+                    mac_native_window, mac_resize_attached, lvgl_width, lvgl_height, lvgl_size_ok, mac_shell_floating(), mac_shell_window_level(), llm_available, llm_active, mac_render_frames, tank.advisor_asks, save_ok, SDL_GetTicks()-mac_smoke_start, save ? save : "");
+            if (mac_controls_test) mac_shell_controls_report(report);
+            fclose(report);
+        }
+        if (!report || !save_ok || !mac_native_window || !llm_available || mac_render_frames == 0 ||
+            !lvgl_size_ok || (mac_theme_resize_test && (!mac_resize_attached || !mac_resize_test_ok() || SDL_GetTicks()-mac_smoke_start >= 7800))) return 1;
+    }
+    mac_shell_finish();
+    if (s_adev) SDL_CloseAudioDevice(s_adev);
+    SDL_Quit();
     return 0;
 }

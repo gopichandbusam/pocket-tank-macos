@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 /* persist_port_sim.c — sim implementation of the progression ports:
  * ~/.cache/pocket-tank/tank.sav + wall clock. */
 #include "progression.h"
@@ -7,6 +8,7 @@
 #include <time.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /* POCKET_TANK_SAVE overrides the save path (selftests use a scratch file) */
 static const char *path(void) {
@@ -24,7 +26,7 @@ bool persist_port_load(void *buf, size_t max, size_t *got) {
 
 static bool ensure_parent_dir(const char *file) {
     char dir[512]; size_t n = strlen(file);
-    if (n >= sizeof dir) return false;
+    if (n >= sizeof dir) { errno = ENAMETOOLONG; return false; }
     memcpy(dir, file, n + 1);
     char *slash = strrchr(dir, '/');
     if (!slash || slash == dir) return true;
@@ -41,8 +43,31 @@ static bool ensure_parent_dir(const char *file) {
 bool persist_port_save(const void *buf, size_t len) {
     const char *save = path();
     if (!ensure_parent_dir(save)) return false;
-    FILE *f = fopen(save, "wb"); if (!f) return false;
-    size_t n = fwrite(buf, 1, len, f); fclose(f); return n == len;
+    /* Write beside the destination so rename is atomic. Until every write and
+     * close succeeds, an earlier snapshot remains intact, even if we die. */
+    char temporary[512 + sizeof ".tmp.XXXXXX"];
+    snprintf(temporary, sizeof temporary, "%s.tmp.XXXXXX", save);
+    int fd = mkstemp(temporary);
+    if (fd < 0) return false;
+    FILE *f = fdopen(fd, "wb");
+    if (!f) {
+        int error = errno;
+        close(fd); unlink(temporary); errno = error;
+        return false;
+    }
+    int error = 0;
+    errno = 0;
+    if (fwrite(buf, 1, len, f) != len) error = errno ? errno : EIO;
+    if (!error && fflush(f) != 0) error = errno ? errno : EIO;
+    if (!error && fsync(fileno(f)) != 0) error = errno ? errno : EIO;
+    if (fclose(f) != 0 && !error) error = errno ? errno : EIO;
+    if (!error && rename(temporary, save) != 0) error = errno ? errno : EIO;
+    if (error) {
+        unlink(temporary);
+        errno = error;
+        return false;
+    }
+    return true;
 }
 bool persist_port_erase(void) { return remove(path()) == 0 || errno == ENOENT; }
 #ifndef PT_VERSION

@@ -36,3 +36,16 @@ sim/sheets/
 
 # this bench's boards (USB serials) for flash_round.sh / flash_watch.sh
 tools/boards.local.sh
+
+# macOS build outputs and private audit/test fixtures
+/work/
+/dist/
+/*.app/
+/*.dmg
+/*.zip
+/Pocket Tank - Read Me.txt
+/Uninstall Pocket Tank - Read Me.txt
+docs/audit/migration-manifest.json
+*.dSYM/
+*.sav
+*.sav.tmp.*

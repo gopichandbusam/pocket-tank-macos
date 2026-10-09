@@ -1,16 +1,13 @@
 # pocket-tank PC simulator (LVGL v9 + SDL2)
 #
-# macOS: built as x86_64 by default because the Homebrew SDL2 here is the
-# Intel build (/usr/local); the sim runs fine under Rosetta. `make ARCH=` for
-# a native build against an arm64 SDL2. Elsewhere (Linux, CI) ARCH is empty
-# and the host compiler's own architecture is used.
+# Native host build by default. ARCH may be set explicitly for cross-builds.
 
 CC      := cc
 ifeq ($(shell uname -s),Darwin)
-ARCH    ?= -arch x86_64
+ARCH    ?=
 endif
 ARCH    ?=
-SDL_CFLAGS := $(shell sdl2-config --cflags)
+SDL_CFLAGS := $(shell sdl2-config --cflags) -I$(shell sdl2-config --prefix)/include
 SDL_LIBS   := $(shell sdl2-config --libs)
 
 # `make ROUND=1`: the round 466 px bowl (the Waveshare 1.75C's world) as
@@ -37,7 +34,12 @@ LDFLAGS := $(ARCH) $(SDL_LIBS) -lm
 APP_SRCS  := main.c advisor_llm.c persist_port_sim.c net_port_sim.c ../common/tank.c ../common/update.c ../common/advisor.c ../common/render.c ../common/icons.c ../common/progression.c ../common/setup.c ../common/audio.c ../common/notice.c ../common/sounds.c ../common/battery.c ../common/llm/q4_model.c ../common/llm/word_tok.c ../common/llm/advisor_core.c
 
 LVGL_SRCS := $(shell find lvgl/src -name '*.c')
-OBJS      := $(patsubst %.c,$(BUILD)/%.o,$(filter-out ../common/%,$(APP_SRCS)) $(LVGL_SRCS)) $(patsubst ../common/%.c,$(BUILD)/common/%.o,$(filter ../common/%,$(APP_SRCS)))
+ifeq ($(shell uname -s),Darwin)
+MAC_OBJS := $(BUILD)/mac_shell.o $(BUILD)/mac_resize.o
+LDFLAGS += -framework Cocoa
+endif
+
+OBJS      := $(MAC_OBJS) $(patsubst %.c,$(BUILD)/%.o,$(filter-out ../common/%,$(APP_SRCS)) $(LVGL_SRCS)) $(patsubst ../common/%.c,$(BUILD)/common/%.o,$(filter ../common/%,$(APP_SRCS)))
 
 $(OUT): $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)
@@ -70,6 +72,14 @@ $(BUILD)/common/llm/%.o: ../common/llm/%.c
 	$(CC) $(CFLAGS) -O3 -c $< -o $@
 
 $(BUILD)/common/%.o: ../common/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/mac_shell.o: mac_shell.m mac_shell.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/mac_resize.o: mac_resize.m mac_resize.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

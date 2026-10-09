@@ -127,7 +127,9 @@ goal_t advisor_llm(const tank_t *t, int fish_idx, bool request) {
 
     pthread_mutex_lock(&g_mx);
     if (t->roster_gen != g_gen) { g_gen = t->roster_gen; memset(g_pending, 0, sizeof g_pending); if (g_resp_gen != g_gen) g_resp_fish = -1; }
-    if (g_resp_fish == fish_idx && g_resp_gen != g_gen) g_resp_fish = -1;   /* asked of the slot's last tenant */
+    /* An old in-flight result can arrive after the roster-change poll above.
+     * Drop it regardless of slot: a sold last slot will never be polled. */
+    if (g_resp_fish >= 0 && g_resp_gen != g_gen) g_resp_fish = -1;
     if (g_resp_fish == fish_idx) {            /* finished decision: deliver on any poll */
         if (g_resp_goal.id < GOAL_COUNT) out = g_resp_goal;
         g_resp_fish = -1;
@@ -139,7 +141,9 @@ goal_t advisor_llm(const tank_t *t, int fish_idx, bool request) {
                    out.confidence < 0.6f && out.runner_up < GOAL_COUNT ? GOAL_NAMES[out.runner_up] : "");
     }
     if (request) g_pending[fish_idx] = true;
-    if (!g_busy && g_req_fish < 0 && g_pending[fish_idx] && pick_next(t) == fish_idx) {
+    /* Keep the single response slot until its fish consumes it. A fast next
+     * inference could otherwise overwrite an unread decision between polls. */
+    if (!g_busy && g_req_fish < 0 && g_resp_fish < 0 && g_pending[fish_idx] && pick_next(t) == fish_idx) {
         g_pending[fish_idx] = false;
         g_next = (fish_idx + 1) % (t->n_fish > 0 ? t->n_fish : 1);
         advisor_core_encode(t, fish_idx, g_req_state, sizeof g_req_state);   /* fresh state */

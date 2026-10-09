@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "app": {
+    "name": "Pocket Tank",
+    "bundle_version": "1.3",
+    "bundle_build": "4",
+    "bundle_identifier": "com.local.pockettank"
+  },
+  "system": {
+    "model": "MacBook Pro Mac17,8",
+    "chip": "Apple M5 Pro",
+    "cores": "18 total (6 Super, 12 Performance)",
+    "memory_gib": 48,
+    "macos": "27.0.1 (26A434)"
+  },
+  "collection": {
+    "run_type": "visible window, normal 1x fish progression",
+    "requested_smoke_seconds": 90,
+    "live_sample_count": 90,
+    "live_sample_span_seconds": 89.350706,
+    "analysis_warmup_excluded_seconds": 10.0,
+    "analysis_span_seconds": 79.30439,
+    "sampler": "proc_pid_rusage(RUSAGE_INFO_CURRENT) with proc_pidinfo live-PID check, sampled about once per second",
+    "cpu_counter_conversion": "ri_user_time and ri_system_time are Mach-time ticks; converted using mach_timebase_info (125/3 ns per tick on this host)",
+    "launch": "copied final app, unique audit bundle identifier, ad-hoc re-signed; direct executable launch inside copied app bundle",
+    "save_and_preferences": "isolated per-run copy of game save; user save and preferences were not written",
+    "window_visible": true,
+    "input_blocked": true,
+    "task_energy_interpretation": "ri_energy_nj is process task CPU Recount energy; reported watts are its delta divided by elapsed time, not whole-Mac power or GPU energy",
+    "gpu_and_system_power": "ioreg exposed process-specific GPU activity time but no power or energy; powermetrics requires superuser and sudo -n was denied. No whole-Mac watts are inferred."
+  },
+  "measurement": {
+    "cpu_percent_of_one_core": {
+      "count": 79,
+      "min": 3.963605096076189,
+      "median": 9.264381018309326,
+      "p95": 11.248781760042128,
+      "max": 12.74496181606201
+    },
+    "physical_footprint_mib": {
+      "count": 80,
+      "min": 210.21966552734375,
+      "median": 214.57904052734375,
+      "p95": 214.62591552734375,
+      "max": 216.76654052734375
+    },
+    "resident_mib": {
+      "count": 80,
+      "min": 129.859375,
+      "median": 130.25,
+      "p95": 130.265625,
+      "max": 133.8125
+    },
+    "task_cpu_energy_rate_w": {
+      "count": 79,
+      "min": 0.015014221437005778,
+      "median": 0.017928174549396936,
+      "p95": 0.06883456943633703,
+      "max": 0.0961042904954279
+    },
+    "task_cpu_energy_j_over_analysis_window": 2.24762378,
+    "ps_cpu_percent_of_one_core_cumulative": {
+      "count": 0,
+      "min": null,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "ps_rss_mib": {
+      "count": 0,
+      "min": null,
+      "median": null,
+      "p95": null,
+      "max": null
+    }
+  },
+  "diagnostics": {
+    "native_window": "1",
+    "resize_attached": "1",
+    "lvgl_resolution": "448x368",
+    "lvgl_fixed_world": "1",
+    "floating": "1",
+    "window_level": "3",
+    "model_loaded": "1",
+    "llm_active": "1",
+    "frames": "5129",
+    "advisor_asks": "22",
+    "save_on_exit": "1",
+    "smoke_elapsed_ms": "90013"
+  },
+  "run_metadata": {
+    "returncode": 0,
+    "wall_elapsed_seconds": 91.31604266700015,
+    "samples_live": 90,
+    "ps_samples": null,
+    "visible_window": true,
+    "input_blocked_smoke_mode": true,
+    "launched_direct_from_copied_app_bundle": true,
+    "final_dist_executable_sha256": "d19f8f9c390da679afe66bad9adfa826faa98782424fda782f64a55049b645a3",
+    "audit_copy_executable_sha256": null,
+    "bundle_version": "1.3",
+    "bundle_build": "4"
+  },
+  "gpu_activity": {
+    "source": "ioreg AGXDeviceUserClient AppUsage",
+    "attribution": "same PocketTank PID at both snapshots",
+    "api_names": [
+      "Metal"
+    ],
+    "counter_name": "accumulatedGPUTime",
+    "unit": "not shown in the IORegistry property; raw counter values retained",
+    "initial_values_raw": [
+      67609666,
+      332875
+    ],
+    "final_values_raw": [
+      1862902166,
+      332875
+    ],
+    "delta_values_raw": [
+      1795292500,
+      0
+    ],
+    "sample_interval_seconds": 80.115031042,
+    "power_or_energy": "not provided by this per-client activity counter"
+  },
+  "device_wide_gpu_snapshots": [
+    {
+      "phase": "early",
+      "device_utilization_percent": 27,
+      "renderer_utilization_percent": 26
+    },
+    {
+      "phase": "late",
+      "device_utilization_percent": 0,
+      "renderer_utilization_percent": 0
+    }
+  ],
+  "raw_samples_csv": "work/audit/performance/runs/final_bundle_1_3/normal_1x/resource.csv"
+}

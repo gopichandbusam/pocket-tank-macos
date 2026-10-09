@@ -39,4 +39,26 @@ jobs:
           ./q4_host ../../model/out/model_q4.bin ../../model/out/tokenizer.bin \
             "zone 2 hunger 7 energy 5 stress 2 curiosity 8 bold 4 social 6 stage adult trust 6 bored 3 food near 12 friend mid 3 bubble mid 10 reef far 7 wall clear last explore time day ->"
       - name: Check Python syntax
-        run: python3 -m compileall -q tools model
+        run: python3 -m compileall -q tools model mac
+      - name: Test simulator mailbox and atomic saves
+        run: |
+          python3 mac/tests/test_advisor_mailbox.py
+          python3 mac/tests/test_persistence.py
+  mac-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install SDL development dependencies
+        run: brew install sdl2
+      - name: Build native app and run regressions
+        run: |
+          git clone --depth 1 --branch v9.2.2 https://github.com/lvgl/lvgl.git sim/lvgl
+          make -C sim -j3
+          make -C sim check
+          python3 mac/tests/test_advisor_mailbox.py
+          python3 mac/tests/test_persistence.py
+          python3 mac/package.py --no-zip
+          python3 mac/build_uninstaller.py
+          python3 mac/verify_source.py

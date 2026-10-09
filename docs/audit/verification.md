@@ -1,0 +1,33 @@
+# Independent app and persistence audit
+
+Final native verification passed against Pocket Tank **1.3, build 4**. Tests used uniquely identified, re-signed private copies of the final app, with write permissions removed from the entire copied bundle. Saves and preferences were isolated. Private logs and fixtures are under `work/audit/verification`; no copied fish identity or save content is included in this report.
+
+## Fixed findings
+
+- **P1: destructive save overwrite.** The old simulator port opened the live destination with `wb`, destroying the previous snapshot before success was known. Fault injection reproduced partial and zero-byte replacements and false success on close errors. The fixed port writes a unique same-directory temporary file, checks write/flush/fsync/close, then atomically renames it. Returned failures preserve the snapshot, remove temporary files and preserve errno. The progression format remains 1688 bytes. An abruptly killed process may leave its unused temporary file; it cannot truncate the previous snapshot. Directory fsync and sudden power-loss guarantees are not claimed.
+- **P1: failed shutdown save discarded the running aquarium.** Final GUI tests forced a real rename failure. The native alert's real **Keep Tank Open** button returned cancellation; the process remained alive, and a captured fixture snapshot matched the original byte for byte. A second quit showed the real alert again. Restoring write capability and clicking **Retry Save** wrote the updated 1688-byte save and exited zero.
+- **P2: missing bundled model silently borrowed cwd resources.** A cached older app copy with both model files removed was launched from the repository simulator directory. It incorrectly loaded repository resources and passed the required-model smoke check. The final copy under the same conditions stayed on its rule brain, rendered normally and saved; its smoke check returned one with `model_loaded=0`, correctly reporting the missing bundle resources. It did not crash or hang.
+
+## Fresh final results
+
+- **Normal quit routes:** real native Quit menu target, Cmd-Q menu key equivalent, and aquarium red close button each exited zero, updated the isolated normal `Library/Application Support/Pocket Tank/tank.sav` to 1688 bytes, and delivered **two narrated model decisions**. These were normal launches without smoke flags or a smoke timer, from `/private/tmp`; `POCKET_TANK_SAVE` was not preset. A test-only Foundation observer redirected the normal App Support location, and an isolated defaults suite was removed at exit. The same decision-delivery assertion passed during save-error recovery.
+- **Native controls:** actual info/help buttons and care actions passed effect assertions. Transparency changed the aquarium alpha and reset to opaque while instructions stayed opaque. Help and held Escape blocked aquarium gestures; closing instructions and reopening worked without quitting. The final source separately gates aquarium keyboard/mouse input on its own active key window; unattended smoke disables external input. This gate was source-reviewed; no separate synthetic background-key injection test is claimed.
+- **Theme and layout:** the final light, dark and minimum-size instruction snapshots were visually reviewed. Text, Feed/Light/Milestones/Sound, Opaque, Close, floating checkbox and transparency slider are legible and remain visible at minimum size. System appearance, resizing and close/reopen diagnostics passed.
+- **Aquarium resizing:** real SDL windows at 560×460, 840×690 and 336×276 restored to 448×368. Logical and LVGL resolution stayed 448×368, with coordinate assertions at quarter, center and corners. The native close request ended the eight-second test at **6615 ms**, saved successfully and produced **360 frames / six advisor asks**. Reopening restored the saved fish roster.
+- **Bundle closure:** the arm64 private copy passed deep strict ad hoc signature validation. Static links and actual runtime loading used bundled SDL2 and SDL3 or system libraries, with no Homebrew runtime dependency. Rendering produced a populated own-app framebuffer.
+
+## Persistence regression evidence
+
+`python3 mac/tests/test_persistence.py` passes eight tests. The harness compiles the real save port and progression/tank sources with `-std=c11 -Wall -Wextra -Werror`. The expanded suite was rerun against the old port through its test-only `PERSIST_PORT_SOURCE` override: seven baseline failures, then all eight tests passing on the fixed source. Logs are `persistence-baseline.txt` and `persistence-fixed.txt`.
+
+Coverage includes short writes, flush, sync, close, rename, abrupt process exit, successful replacement and roundtrip, genuine progression fallback for missing/empty/truncated/invalid-magic/invalid-count saves, actual filesystem replacement failure, and a destination symlink whose unrelated fixture target remains untouched. Public tests generate disposable data and never read the live save. Darwin was executed; POSIX portability was reviewed, but Linux execution is not claimed. Root separately owns the complete engine suite and mailbox tests.
+
+Earlier malformed-resource tests on read-only copies also showed missing/truncated model or tokenizer falling back without crashing and a truncated sound bank rendering and saving. Those older cases were not rerun wholesale because the final missing-resource regression and final bundle checks passed; they are not represented as fresh final results.
+
+## Known limits and safe scope
+
+**Existing P2 corruption limit:** a valid-header 1688-byte fixture containing IEEE NaN hunger is accepted and restores a nonfinite value. Proof remains in `corrupt_float_probe.c` and `nan-hunger-result.txt`. The loader checks core length, magic and fish count but not finite gameplay values. A future finite-value validation proposal would preserve the save format; no common-engine or data-model change was made in this audit.
+
+No single-instance lost-update protection is claimed: independently launched processes can replace the same save. No actual uninstall, live user save write, or real app preference change was performed by these harnesses. The live save was read once into a private clone; all later runs used that clone or generated fixtures. Observers send actions only to their own process's NSApp menu/window and never message another application process by bundle identity. GUI tests ran exclusively after profiling released the slot and are complete.
+
+Private evidence: `normal-exit-results.json`, `recovery-results.json`, `resource-cwd-results.json`, and `final-theme-922acce0/smoke`. Final instruction images are `help-light.png`, `help-dark.png`, and `help-minimum.png` within that smoke folder.

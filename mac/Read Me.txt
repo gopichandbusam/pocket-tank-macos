@@ -1,0 +1,31 @@
+Pocket Tank for Mac — 1.3 alpha
+
+Open Pocket Tank.app and complete the original welcome screens. The original trained fish model runs locally; no cloud account or internet connection is required.
+
+Move the tank by its title bar. Resize it proportionally or close it with the standard red window button. Click ⓘ for scrollable, resizable, system-themed care instructions and Feed, Light, Milestones and Sound controls. Command-? also opens Instructions.
+
+Float above other apps using the checkbox/menu. Transparency fades the aquarium down to 20% opacity; Instructions stays readable. Opaque restores its appearance. Window and transparency preferences persist.
+
+Command-Q saves and quits. Normal close/quit also saves to:
+~/Library/Application Support/Pocket Tank/tank.sav
+
+Keep this data outside the app so an update preserves your aquarium. A failed save offers Retry Save / Keep Tank Open. Use one running copy: independent instances do not coordinate writes.
+
+Care gestures:
+- Click the water surface or drag downward near the top to feed.
+- Click a fish for stats; MORE opens its milestones/settings/upgrades.
+- Hold the mouse on the glass for a few seconds; trusting fish may approach.
+- Drag across algae to clean; swipe sideways through plants to trim.
+- Two quick clicks switch manual light; three can startle fish.
+- Quiet fish may be resting or inspecting plants, especially at night.
+
+The DMG includes Uninstall Pocket Tank.app. Review its removal list and confirm; it can optionally remove aquarium data and preferences. Recognized app/data copies are moved to Trash.
+
+Current download: Apple Silicon, macOS 27+. Independently maintained alpha; ad-hoc signed, not Apple notarized. Older macOS and Intel downloads are not verified. Original firmware-style settings and developer shortcuts remain inherited.
+
+Source and audit reports:
+https://github.com/gopichandbusam/pocket-tank-macos
+
+Original project and model:
+https://github.com/mediacutlet/pocket-tank
+MIT license and dependency notices are included in Contents/Resources/Licenses.
